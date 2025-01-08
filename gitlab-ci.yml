@@ -1,0 +1,98 @@
+stages:
+  - build
+  - test
+  - upload
+
+include:
+  - template: Jobs/SAST.gitlab-ci.yml
+
+variables:
+  SEARCH_MAX_DEPTH: 10
+  PACKAGE_NAME: "sample"
+  PACKAGE_VERSION: "0.0.1-SNAPSHOT"
+  COMMIT_TAG: "${CI_COMMIT_SHA:0:4}" # Extract last 4 characters of commit hash dynamically
+  PACKAGE_REGISTRY_URL: "https://gitlab.com/api/v4/projects/38062833/packages/generic"
+
+# Build Stage
+build:
+  image: maven:3.6-jdk-8-slim
+  stage: build
+  script:
+    - mvn package -Dmaven.repo.local=./.m2/repository
+  artifacts:
+    paths:
+      - .m2/
+      - target/sample-0.0.1-SNAPSHOT.jar
+
+# SpotBugs SAST
+spotbugs-sast:
+  dependencies:
+    - build
+  variables:
+    MAVEN_REPO_PATH: $CI_PROJECT_DIR/.m2/repository
+    COMPILE: "false"
+  script:
+    - echo "Current working directory:"
+    - pwd
+    - echo "Files in the current directory:"
+    - ls -l
+    - echo "Attempting to display gl-sast-report.json:"
+    - cat gl-sast-report.json
+  artifacts:
+    reports:
+      sast: gl-sast-report.json
+
+# SAST
+sast:
+  stage: test
+  allow_failure: true
+  artifacts:
+    paths: [gl-sast-report.json]
+    reports:
+      sast: gl-sast-report.json
+
+# Validate Reports
+send-reports:
+  image: ubuntu:20.04
+  stage: upload
+  artifacts:
+    reports:
+      sast: gl-sast-report.json
+  script:
+    - bash -x check_sast_exit.sh
+
+# JUnit Tests
+run-junit-tests:
+  image: maven:3.6-jdk-8-slim
+  stage: upload
+  script:
+    - mvn test
+    - bash validate_junit_tests.sh
+  artifacts:
+    when: always
+    paths:
+      - target/surefire-reports/
+    reports:
+      junit: target/surefire-reports/*.xml
+  allow_failure: false
+
+# Upload JAR to GitLab Package Registry
+upload-to-package-registry:
+  image: curlimages/curl:latest
+  stage: upload
+  dependencies:
+    - build
+  script:
+    - |
+      echo "Extracting last 4 characters of commit hash..."
+      COMMIT_TAG=${CI_COMMIT_SHA: -4} # Extract the last 4 characters of the commit hash
+      echo "Commit SHA: $CI_COMMIT_SHA"
+      echo "COMMIT_TAG: $COMMIT_TAG"
+      echo "Renaming artifact..."
+      mv target/sample-0.0.1-SNAPSHOT.jar target/sample-${PACKAGE_VERSION}-${COMMIT_TAG}.jar
+      echo "Uploading renamed artifact to GitLab Package Registry..."
+      curl --header "JOB-TOKEN: $CI_JOB_TOKEN" \
+           --upload-file "target/sample-${PACKAGE_VERSION}-${COMMIT_TAG}.jar" \
+           "$PACKAGE_REGISTRY_URL/$PACKAGE_NAME/$PACKAGE_VERSION/sample-${PACKAGE_VERSION}-${COMMIT_TAG}.jar"
+
+
