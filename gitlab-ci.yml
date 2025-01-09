@@ -16,10 +16,21 @@ variables:
   PACKAGE_REGISTRY_URL: "https://gitlab.com/api/v4/projects/38062833/packages/generic"
   CI_COMMIT_TAG: "abcd"
 
+# Cache definitions
+cache:
+  key: "${CI_COMMIT_REF_SLUG}"
+  paths:
+    - .m2/repository/
+    - target/
+
 # Build Stage
 build:
   image: maven:3.6-jdk-8-slim
   stage: build
+  cache:
+    key: maven-dependencies
+    paths:
+      - .m2/repository/
   script:
     - mvn clean
     - mvn package -Dmaven.repo.local=./.m2/repository
@@ -36,6 +47,11 @@ spotbugs-sast:
   variables:
     MAVEN_REPO_PATH: $CI_PROJECT_DIR/.m2/repository
     COMPILE: "false"
+  cache:
+    key: sast-cache
+    paths:
+      - .m2/repository/
+      - target/
   script:
     - echo "Current working directory:"
     - pwd
@@ -71,6 +87,11 @@ send-reports:
 run-junit-tests:
   image: maven:3.6-jdk-8-slim
   stage: run-junit
+  cache:
+    key: junit-tests-cache
+    paths:
+      - .m2/repository/
+      - target/
   script:
     - mvn test
     - bash validate_junit_tests.sh
@@ -113,6 +134,10 @@ tag-artifact:
   stage: tagging
   dependencies:
     - build
+  cache:
+    key: artifact-tagging-cache
+    paths:
+      - target/
   script:
     - |
       if [ -z "$CI_COMMIT_TAG" ]; then
