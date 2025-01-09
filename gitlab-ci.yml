@@ -23,8 +23,7 @@ cache:
     - .m2/repository/
     - target/
 
-stages:
-  - init # initializing some variables for deployment
+
 tag:
   stage: init
   script:
