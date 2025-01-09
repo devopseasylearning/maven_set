@@ -12,9 +12,9 @@ variables:
   SEARCH_MAX_DEPTH: 10
   PACKAGE_NAME: "sample"
   PACKAGE_VERSION: "0.0.1-SNAPSHOT"
-  COMMIT_TAG: "${CI_COMMIT_SHA:0:4}" # Extract last 4 characters of commit hash dynamically
+  COMMIT_TAG: "${CI_COMMIT_SHA:0:4}" # Extract last 4 characters of the commit hash dynamically
   PACKAGE_REGISTRY_URL: "https://gitlab.com/api/v4/projects/38062833/packages/generic"
-  CI_COMMIT_TAG: abcd
+  CI_COMMIT_TAG: "abcd"
 
 # Build Stage
 build:
@@ -22,14 +22,12 @@ build:
   stage: build
   script:
     - mvn clean
-    - mvn package -Dmaven.repo.local=./.m2/repository  # -DskipTests=true
+    - mvn package -Dmaven.repo.local=./.m2/repository
   artifacts:
     paths:
       - .m2/
       - target/sample-0.0.1-SNAPSHOT.jar
   allow_failure: false
-
-
 
 # SpotBugs SAST
 spotbugs-sast:
@@ -44,12 +42,11 @@ spotbugs-sast:
     - echo "Files in the current directory:"
     - ls -l
     - echo "Attempting to display gl-sast-report.json:"
-    - cat gl-sast-report.json
+    - cat gl-sast-report.json || echo "SAST report not found."
   artifacts:
     reports:
       sast: gl-sast-report.json
   allow_failure: false
-
 
 # SAST
 sast:
@@ -70,7 +67,6 @@ send-reports:
   script:
     - bash -x check_sast_exit.sh
 
-
 # JUnit Tests
 run-junit-tests:
   image: maven:3.6-jdk-8-slim
@@ -87,34 +83,29 @@ run-junit-tests:
   allow_failure: false
   needs: ["build", "send-reports"]
 
-
 # Tag Code Stage
 tag-code:
   image: bitnami/git
   stage: tagging
   script:
     - |
-      # Check if CI_COMMIT_TAG is set
-
       if [ -z "$CI_COMMIT_TAG" ]; then
         echo "Error: Tagging is required. Please provide a tag."
         exit 1
       fi
 
-      # Set up Git user configuration
-      echo "Setting up Git user configuration..."
-      git config --global user.email ${GIT_USER_EMAIL}
-      git config --global user.name ${GIT_USERNAME}
+      # Configure Git user settings
+      echo "Configuring Git user settings..."
+      git config --global user.email "$GIT_USER_EMAIL"
+      git config --global user.name "$GIT_USERNAME"
 
       # Tagging the code
       echo "Tagging code with tag: $CI_COMMIT_TAG"
       git tag -a "$CI_COMMIT_TAG" -m "Tagging code as $CI_COMMIT_TAG"
 
-      # Push the tag with authentication in the URL
+      # Push the tag
       echo "Pushing tag: $CI_COMMIT_TAG"
       git push https://${GIT_USERNAME}:${GIT_PERSONAL_ACCESS_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git "$CI_COMMIT_TAG"
-  # rules:
-  #   - if: $CI_COMMIT_BRANCH == "main"
 
 # Tag Artifact Stage
 tag-artifact:
@@ -123,16 +114,16 @@ tag-artifact:
   dependencies:
     - build
   script:
-
     - |
       if [ -z "$CI_COMMIT_TAG" ]; then
-        echo "Tagging is required before merging to main"
+        echo "Error: Tagging is required before merging to main."
         exit 1
       fi
+
       echo "Tagging artifact with tag: $CI_COMMIT_TAG"
       mv target/sample-0.0.1-SNAPSHOT.jar target/sample-${CI_COMMIT_TAG}.jar
+
+      echo "Uploading artifact to package registry"
       curl --header "JOB-TOKEN: $CI_JOB_TOKEN" \
            --upload-file "target/sample-${CI_COMMIT_TAG}.jar" \
            "$PACKAGE_REGISTRY_URL/$PACKAGE_NAME/$PACKAGE_VERSION/sample-${CI_COMMIT_TAG}.jar"
-  # rules:
-  #   - if: $CI_COMMIT_BRANCH == "main"
