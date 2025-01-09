@@ -1,7 +1,9 @@
 stages:
   - build
   - test
-  - upload
+  - sast
+  - run-junit
+  - tagging
 
 include:
   - template: Jobs/SAST.gitlab-ci.yml
@@ -12,17 +14,22 @@ variables:
   PACKAGE_VERSION: "0.0.1-SNAPSHOT"
   COMMIT_TAG: "${CI_COMMIT_SHA:0:4}" # Extract last 4 characters of commit hash dynamically
   PACKAGE_REGISTRY_URL: "https://gitlab.com/api/v4/projects/38062833/packages/generic"
+  CI_COMMIT_TAG: abcd
 
 # Build Stage
 build:
   image: maven:3.6-jdk-8-slim
   stage: build
   script:
-    - mvn package -Dmaven.repo.local=./.m2/repository
+    - mvn clean
+    - mvn package -Dmaven.repo.local=./.m2/repository  # -DskipTests=true
   artifacts:
     paths:
       - .m2/
       - target/sample-0.0.1-SNAPSHOT.jar
+  allow_failure: false
+
+
 
 # SpotBugs SAST
 spotbugs-sast:
@@ -41,6 +48,8 @@ spotbugs-sast:
   artifacts:
     reports:
       sast: gl-sast-report.json
+  allow_failure: false
+
 
 # SAST
 sast:
@@ -54,17 +63,18 @@ sast:
 # Validate Reports
 send-reports:
   image: ubuntu:20.04
-  stage: upload
+  stage: sast
   artifacts:
     reports:
       sast: gl-sast-report.json
   script:
     - bash -x check_sast_exit.sh
 
+
 # JUnit Tests
 run-junit-tests:
   image: maven:3.6-jdk-8-slim
-  stage: upload
+  stage: run-junit
   script:
     - mvn test
     - bash validate_junit_tests.sh
@@ -75,24 +85,54 @@ run-junit-tests:
     reports:
       junit: target/surefire-reports/*.xml
   allow_failure: false
+  needs: ["build", "send-reports"]
 
-# Upload JAR to GitLab Package Registry
-upload-to-package-registry:
+
+# Tag Code Stage
+tag-code:
+  image: bitnami/git
+  stage: tagging
+  script:
+    - |
+      # Check if CI_COMMIT_TAG is set
+
+      if [ -z "$CI_COMMIT_TAG" ]; then
+        echo "Error: Tagging is required. Please provide a tag."
+        exit 1
+      fi
+
+      # Set up Git user configuration
+      echo "Setting up Git user configuration..."
+      git config --global user.email ${GIT_USER_EMAIL}
+      git config --global user.name ${GIT_USERNAME}
+
+      # Tagging the code
+      echo "Tagging code with tag: $CI_COMMIT_TAG"
+      git tag -a "$CI_COMMIT_TAG" -m "Tagging code as $CI_COMMIT_TAG"
+
+      # Push the tag with authentication in the URL
+      echo "Pushing tag: $CI_COMMIT_TAG"
+      git push https://${GIT_USERNAME}:${GIT_PERSONAL_ACCESS_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git "$CI_COMMIT_TAG"
+  # rules:
+  #   - if: $CI_COMMIT_BRANCH == "main"
+
+# Tag Artifact Stage
+tag-artifact:
   image: curlimages/curl:latest
-  stage: upload
+  stage: tagging
   dependencies:
     - build
   script:
+
     - |
-      echo "Extracting last 4 characters of commit hash..."
-      COMMIT_TAG=${CI_COMMIT_SHA: -4} # Extract the last 4 characters of the commit hash
-      echo "Commit SHA: $CI_COMMIT_SHA"
-      echo "COMMIT_TAG: $COMMIT_TAG"
-      echo "Renaming artifact..."
-      mv target/sample-0.0.1-SNAPSHOT.jar target/sample-${PACKAGE_VERSION}-${COMMIT_TAG}.jar
-      echo "Uploading renamed artifact to GitLab Package Registry..."
+      if [ -z "$CI_COMMIT_TAG" ]; then
+        echo "Tagging is required before merging to main"
+        exit 1
+      fi
+      echo "Tagging artifact with tag: $CI_COMMIT_TAG"
+      mv target/sample-0.0.1-SNAPSHOT.jar target/sample-${CI_COMMIT_TAG}.jar
       curl --header "JOB-TOKEN: $CI_JOB_TOKEN" \
-           --upload-file "target/sample-${PACKAGE_VERSION}-${COMMIT_TAG}.jar" \
-           "$PACKAGE_REGISTRY_URL/$PACKAGE_NAME/$PACKAGE_VERSION/sample-${PACKAGE_VERSION}-${COMMIT_TAG}.jar"
-
-
+           --upload-file "target/sample-${CI_COMMIT_TAG}.jar" \
+           "$PACKAGE_REGISTRY_URL/$PACKAGE_NAME/$PACKAGE_VERSION/sample-${CI_COMMIT_TAG}.jar"
+  # rules:
+  #   - if: $CI_COMMIT_BRANCH == "main"
