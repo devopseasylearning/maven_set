@@ -1,0 +1,202 @@
+############################## main.tf###########
+module "cluster" {
+  source  = "terraform-aws-modules/rds-aurora/aws"
+
+  name           = var.cluster_name
+  engine         = "aurora-postgresql"
+  engine_version = var.engine_version
+
+  # Define a single instance
+  instance_class = var.default_instance_class
+  instances = {
+    one = {
+      instance_class      = var.default_instance_class
+      publicly_accessible = var.publicly_accessible
+    }
+  }
+
+  vpc_id               = var.vpc_id
+  db_subnet_group_name = var.db_subnet_group_name
+  security_group_rules = {
+    ex1_ingress = {
+      cidr_blocks             = var.cidr_blocks
+    }
+    ex2_ingress = {
+      source_security_group_id = var.source_security_group_id
+    }
+  }
+  
+
+  # No new DB Subnet Group will be created
+  create_db_subnet_group = false
+
+  # Cluster configurations
+  master_username         = var.master_username
+  master_password         = var.master_password
+  storage_encrypted       = var.storage_encrypted
+  apply_immediately       = var.apply_immediately
+  monitoring_interval     = var.monitoring_interval
+
+  # Autoscaling disabled (only one instance)
+  autoscaling_enabled = var.autoscaling_enabled
+
+  # CloudWatch logs for monitoring
+  enabled_cloudwatch_logs_exports = var.enabled_cloudwatch_logs_exports
+
+  # Skip final snapshot when destroying
+  skip_final_snapshot = var.skip_final_snapshot
+
+  tags = var.tags
+}
+
+
+
+
+
+############################## variables.tf###########
+variable "aws_region" {
+  description = "AWS region to deploy resources"
+  type        = string
+  default     = "us-east-1" # Replace with your desired region
+}
+
+
+variable "cluster_name" {
+  description = "The name of the Aurora cluster"
+  type        = string
+}
+
+variable "engine_version" {
+  description = "The engine version for Aurora PostgreSQL"
+  type        = string
+  default     = "14.5"
+}
+
+variable "default_instance_class" {
+  description = "The instance class for the Aurora instance"
+  type        = string
+  default     = "db.r6g.large"
+}
+
+variable "publicly_accessible" {
+  description = "Whether the instance is publicly accessible"
+  type        = bool
+  default     = false
+}
+
+variable "vpc_id" {
+  description = "The VPC ID where the Aurora cluster will be created"
+  type        = string
+}
+
+variable "db_subnet_group_name" {
+  description = "The name of the DB subnet group"
+  type        = string
+}
+
+variable "cidr_blocks" {
+  description = "List of CIDR blocks for ingress rules"
+  type        = list(string)
+  default     = ["10.20.0.0/20"] # Replace with your default values if any
+}
+
+variable "source_security_group_id" {
+  description = "Source security group ID for ingress rules"
+  type        = string
+  default     = "sg-0371bdabe9df56112" # Replace with your default values if any
+}
+
+
+variable "master_username" {
+  description = "The master username for the Aurora cluster"
+  type        = string
+}
+
+variable "master_password" {
+  description = "The master password for the Aurora cluster"
+  type        = string
+  sensitive   = true
+}
+
+variable "storage_encrypted" {
+  description = "Enable storage encryption for the Aurora cluster"
+  type        = bool
+  default     = true
+}
+
+variable "apply_immediately" {
+  description = "Whether to apply changes immediately"
+  type        = bool
+  default     = true
+}
+
+variable "monitoring_interval" {
+  description = "Interval for enhanced monitoring"
+  type        = number
+  default     = 10
+}
+
+variable "autoscaling_enabled" {
+  description = "Enable autoscaling for the Aurora cluster"
+  type        = bool
+  default     = false
+}
+
+variable "enabled_cloudwatch_logs_exports" {
+  description = "CloudWatch logs to enable for the Aurora cluster"
+  type        = list(string)
+  default     = ["postgresql"]
+}
+
+variable "skip_final_snapshot" {
+  description = "Skip creating a final snapshot when destroying the Aurora cluster"
+  type        = bool
+  default     = true
+}
+
+variable "tags" {
+  description = "Tags to apply to the Aurora cluster and instances"
+  type        = map(string)
+}
+
+############# providers.tf ########
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+
+  required_version = ">= 1.5.0"
+}
+
+provider "aws" {
+  region = var.aws_region
+}
+
+
+##################### terraform.tfvars###########
+cluster_name               = "test-aurora-db-postgres96"
+engine_version             = "14.5"
+default_instance_class     = "db.r6g.large"
+publicly_accessible        = false
+vpc_id                     = "vpc-02b1b6b060d55e248"
+db_subnet_group_name       = "main"
+master_username            = "kems"
+master_password            = "examplepassword"
+storage_encrypted          = true
+apply_immediately          = true
+monitoring_interval        = 10
+autoscaling_enabled        = false
+enabled_cloudwatch_logs_exports = ["postgresql"]
+skip_final_snapshot        = true
+tags = {
+  Environment = "dev"
+  Terraform   = "true"
+}
+
+cidr_blocks = ["10.30.0.0/20"] # Example CIDR block
+source_security_group_id = "sg-0123456789abcdef0" # Example Security Group ID
+
+
