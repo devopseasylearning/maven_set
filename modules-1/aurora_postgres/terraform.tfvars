@@ -1,0 +1,22 @@
+database_name = "example-cluster-01"
+master_username     = "masteruser"
+master_password     = "SuperSecurePassword123!"
+engine_version      = "16.6"
+instance_class      = "db.r6g.large"
+vpc_id              = "vpc-02b1b6b060d55e248"
+subnet_ids          = ["subnet-0ed80f22280cf60f6", "subnet-09a3bc20dc29357c0"]
+allowed_cidr_blocks = ["10.0.0.0/16"]
+kms_key_id          = "arn:aws:kms:us-east-1:064137398917:key/052a53ca-2255-4e78-ae9a-7958dc74ed37"
+allocated_storage   = 40
+backup_retention_period = 7
+preferred_backup_window  = "07:00-09:00"
+storage_encrypted   = true
+apply_immediately   = false
+tags = {
+  Environment = "production"
+  Project     = "example-project"
+}
+project_name  = "myapp"
+resource_type = "db"
+team_name     = "devops"
+environment   = "production"
